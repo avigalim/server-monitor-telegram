@@ -8,8 +8,6 @@ Status: phase 1 and phase 2 built and tested.
 - Found and fixed during phase 2 testing: `ping` failed under the unit's NoNewPrivileges (the unit now grants CAP_NET_RAW, and a permission failure is reported as a skipped check, not "no reply").
 - Known limitation: bot commands need one poller per bot token, so enable `[commands]` on one server only, or use one bot per server.
 
-WSL test setup: distro `Ubuntu-24.04` (systemd enabled), monitor installed in /opt/server-monitor with the real token.
-
 ## Goal
 
 A simple Linux server monitoring tool that sends alerts to a Telegram bot. Configured with an `.env` file (bot token, recipient user IDs) and a settings file (which alerts are enabled, thresholds, how often to repeat).
