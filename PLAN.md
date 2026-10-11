@@ -1,11 +1,14 @@
 # Server Monitor to Telegram: Plan
 
-Status: phase 1 built and tested.
-- 36 unit tests pass; run against a real Linux /proc in Docker.
-- Tested on WSL2 Ubuntu 24.04 with systemd (Python 3.12): the service check works as an unprivileged user, the unit runs as `servermon`, restarts after kill -9, stops cleanly on SIGTERM, and state.json is writable. Telegram rejected the dummy token with HTTP 401 and alerts were retried each cycle, as designed.
-- Not yet done: sending a real Telegram message (needs a real bot token), and an end to end alert, repeat and recovery run with delivery succeeding.
+Status: phase 1 and phase 2 built and tested.
+- 71 unit tests pass.
+- Verified on WSL2 Ubuntu 24.04 with systemd: unit runs as `servermon`, restarts after kill -9, stops cleanly.
+- Verified with a real bot: alert, reminder and recovery messages, the reboot notice, and the scheduled summary.
+- Phase 2 added: inode, ping, temperature, reboot and ssl checks; scheduled summary (also the heartbeat); `/status` command.
+- Found and fixed during phase 2 testing: `ping` failed under the unit's NoNewPrivileges (the unit now grants CAP_NET_RAW, and a permission failure is reported as a skipped check, not "no reply").
+- Known limitation: bot commands need one poller per bot token, so enable `[commands]` on one server only, or use one bot per server.
 
-WSL test setup: distro `Ubuntu-24.04` (systemd enabled), project installed in /opt/server-monitor with a dummy token, service stopped and disabled.
+WSL test setup: distro `Ubuntu-24.04` (systemd enabled), monitor installed in /opt/server-monitor with the real token.
 
 ## Goal
 
@@ -98,7 +101,6 @@ Later:
 
 ## Next steps
 
-1. Create the bot with @BotFather, fill in `.env`, and run `python monitor.py --test`.
-2. (Done on WSL Ubuntu 24.04.) Repeat the install on the real target server.
-3. Deploy (see README.md).
-4. Phase 2: inode, ping, temperature, reboot, SSL expiry; summary and heartbeat; `/status`.
+1. Deploy to the real target server (see README.md) and trim `settings.toml` to the services, mounts and hosts that matter there.
+2. Enable `[summary]` so a missing daily message tells you the server is down.
+3. Ideas for later: per-alert recipients, muting alerts from Telegram, a multi-server overview.

@@ -13,6 +13,17 @@ A small Linux server monitor that sends alerts to one or more Telegram users. Py
 | `disk`     | Disk usage % for each mount point                     | `threshold`, `mounts`          |
 | `service`  | systemd services that must be `active`                | `names`                        |
 | `endpoint` | TCP port opens, or HTTP status below 400              | `targets`, `timeout`           |
+| `inode`    | Inode usage % for each mount point                    | `threshold`, `mounts`          |
+| `ping`     | Hosts answer ping (uses the system `ping` command)    | `targets`, `timeout`           |
+| `temperature` | Sensor temperatures in °C from `/sys/class/thermal` | `threshold`                    |
+| `reboot`   | One-off notice when the server has just restarted     | `window` (seconds)             |
+| `ssl`      | TLS certificate expiry, or an invalid certificate     | `targets`, `threshold` (days)  |
+
+Notes on the newer checks:
+- `reboot` sends one 🔄 message per restart. It has no reminders and no "recovered" message, and `repeat_every` does not apply.
+- `temperature` reports nothing on machines without sensors, which includes most VMs and WSL.
+- `ssl` does a direct TLS handshake, so use ports like 443, 465, 993 or 995. STARTTLS ports such as 587 are not supported. Certificates that are expired, self-signed or issued for another name are reported as problems.
+- `ping` needs the `ping` command. See "Ping permissions" below.
 
 Every alert also takes `enabled`, `duration` (seconds the problem must last before the first alert, to ignore short spikes) and `repeat_every` (seconds between reminders, `0` = never remind). A recovery message is sent when a problem clears. See [settings.toml](settings.toml) for all options with comments.
 
@@ -25,6 +36,37 @@ Messages look like:
 🟢 [web-01] Disk / recovered: 72.0% used, 20.1 GiB free (threshold 85%)
    Problem lasted 6h 12m.
 ```
+
+## Summary and heartbeat
+
+```toml
+[summary]
+enabled = true
+times = ["08:00", "20:00"]   # server local time
+```
+
+At each listed time the monitor sends an overview of every check, problems first:
+
+```
+📊 [web-01] Summary
+Uptime 12d 3h. 1 problem, 9 OK.
+⚠️ Disk /: 91.3% used, 4.2 GiB free (threshold 85%)
+✅ CPU: usage 3.1% (threshold 90%)
+...
+```
+
+It doubles as a heartbeat: alerts only arrive when something goes wrong, so silence is ambiguous. If the daily summary stops arriving, the monitor or the whole server is down. The first run after enabling waits for the next listed time instead of sending at once, and a summary that could not be delivered is retried on the next cycle.
+
+## Bot commands
+
+```toml
+[commands]
+enabled = true
+```
+
+Send `/status` to the bot and it replies with the same overview, from the latest check cycle. Only chats listed in `TELEGRAM_CHAT_IDS` are answered; anyone else is ignored (and logged).
+
+**One server per bot.** Telegram allows only one program to poll a bot for messages. If several servers share one bot token, enable `[commands]` on just one of them, or give each server its own bot. A second poller makes both fail with `409 Conflict`, which is logged. Alerts and summaries are unaffected, because sending has no such limit.
 
 ## Telegram setup
 
@@ -59,6 +101,10 @@ journalctl -u server-monitor -f
 ```
 
 Requires Python 3.11 or newer (`python3 --version`). Debian 12 and Ubuntu 24.04 qualify; Ubuntu 22.04 ships 3.10 and needs a newer Python installed.
+
+## Ping permissions
+
+`ping` needs a raw socket. The shipped unit grants the service exactly that one capability (`AmbientCapabilities=CAP_NET_RAW`). Without it, the unit's `NoNewPrivileges=true` stops `ping` from using its own file capability, and on kernels where `net.ipv4.ping_group_range` is `1 0` (the Debian and WSL default) the ping check cannot run. The monitor detects this and logs `Check 'ping' skipped ... not allowed to open a raw socket` instead of reporting hosts as unreachable. If you run the monitor without the shipped unit, either run it as a user that may ping, or set `net.ipv4.ping_group_range = 0 2147483647`. If `ping` is not installed: `sudo apt install iputils-ping`.
 
 ## Command line
 
@@ -97,6 +143,6 @@ docker run --rm -v "$PWD:/app:ro" python:3.13-slim python /app/monitor.py --dry-
 
 Testing the systemd unit and the `service` check needs a real systemd host, such as WSL2 Ubuntu with systemd enabled, or a VM.
 
-## Not yet included
+## Ideas for later
 
-Planned for later: inode, ping, temperature, reboot detection and SSL expiry checks; daily summary and heartbeat messages; a `/status` bot command.
+Per-alert recipients (for example, disk alerts to one person only), alert acknowledgement or muting from Telegram, and a multi-server overview.

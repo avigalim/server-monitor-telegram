@@ -66,3 +66,62 @@ targets = ["tcp://127.0.0.1:5432", "https://example.com/health"]
 timeout = 5
 duration = 120
 repeat_every = 1800
+
+# Inode usage in percent, one check per mount point. Running out of inodes
+# (millions of tiny files) fills a disk even when space looks free.
+# Filesystems without a fixed inode table (such as btrfs) are skipped.
+[alerts.inode]
+enabled = true
+threshold = 85
+mounts = ["/"]
+duration = 0
+repeat_every = 21600
+
+# Ping reachability, using the system `ping` command (install iputils-ping if missing).
+[alerts.ping]
+enabled = false
+targets = ["1.1.1.1"]
+timeout = 3
+duration = 120
+repeat_every = 1800
+
+# CPU and board temperatures in degrees C, read from /sys/class/thermal.
+# Most VMs have no sensors; the alert then simply reports nothing.
+[alerts.temperature]
+enabled = false
+threshold = 80
+duration = 120
+repeat_every = 3600
+
+# One-off notice when the server has been up for less than `window` seconds.
+# Sent once per reboot: no reminders and no "recovered" message.
+[alerts.reboot]
+enabled = true
+window = 600
+
+# TLS certificate expiry. Targets are host or host:port (default port 443).
+# Warns when fewer than `threshold` days remain, or when the certificate is
+# expired or fails verification. Direct TLS only (443, 465, 993, 995),
+# not STARTTLS ports such as 587.
+[alerts.ssl]
+enabled = false
+targets = ["example.com"]
+threshold = 14
+timeout = 5
+duration = 0
+repeat_every = 86400
+
+# A scheduled overview of every check, also useful as a "the monitor is alive"
+# heartbeat: if the message stops arriving, the monitor or the server is down.
+# Times are HH:MM in the server's local time. The first run waits for the next
+# slot instead of sending at once.
+[summary]
+enabled = false
+times = ["08:00"]
+
+# Bot commands. Send /status to the bot to get the current state of all checks.
+# Only the chats listed in TELEGRAM_CHAT_IDS are answered.
+# IMPORTANT: Telegram lets only ONE program poll a given bot for messages, so
+# enable this on a single server per bot token (or use a separate bot per server).
+[commands]
+enabled = false

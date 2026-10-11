@@ -11,6 +11,9 @@ ExecStart=/usr/bin/python3 /opt/server-monitor/monitor.py
 Restart=always
 RestartSec=10
 NoNewPrivileges=true
+# Lets `ping` open a raw socket for the ping alert. Nothing else is granted.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
 
 [Install]
 WantedBy=multi-user.target
