@@ -146,3 +146,7 @@ Testing the systemd unit and the `service` check needs a real systemd host, such
 ## Ideas for later
 
 Per-alert recipients (for example, disk alerts to one person only), alert acknowledgement or muting from Telegram, and a multi-server overview.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
