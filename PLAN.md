@@ -1,7 +1,11 @@
 # Server Monitor to Telegram: Plan
 
-Status: phase 1 built and tested (36 unit tests pass; run against a real Linux /proc in Docker).
-Not yet done: sending a real Telegram message, and testing the systemd unit and the service check on a real systemd host.
+Status: phase 1 built and tested.
+- 36 unit tests pass; run against a real Linux /proc in Docker.
+- Tested on WSL2 Ubuntu 24.04 with systemd (Python 3.12): the service check works as an unprivileged user, the unit runs as `servermon`, restarts after kill -9, stops cleanly on SIGTERM, and state.json is writable. Telegram rejected the dummy token with HTTP 401 and alerts were retried each cycle, as designed.
+- Not yet done: sending a real Telegram message (needs a real bot token), and an end to end alert, repeat and recovery run with delivery succeeding.
+
+WSL test setup: distro `Ubuntu-24.04` (systemd enabled), project installed in /opt/server-monitor with a dummy token, service stopped and disabled.
 
 ## Goal
 
@@ -95,6 +99,6 @@ Later:
 ## Next steps
 
 1. Create the bot with @BotFather, fill in `.env`, and run `python monitor.py --test`.
-2. Test the systemd unit and service check on a real systemd host (WSL2 Ubuntu or a VM).
+2. (Done on WSL Ubuntu 24.04.) Repeat the install on the real target server.
 3. Deploy (see README.md).
 4. Phase 2: inode, ping, temperature, reboot, SSL expiry; summary and heartbeat; `/status`.
