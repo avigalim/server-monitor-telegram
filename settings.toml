@@ -1,0 +1,68 @@
+# Server monitor settings.
+#
+# Every alert has these common options (defaults shown where they differ per alert):
+#   enabled      = true     set to false to switch the alert off
+#   duration     = N        seconds the problem must persist before the first alert
+#                           (filters out short spikes; 0 = alert immediately)
+#   repeat_every = N        seconds between reminders while the problem continues
+#                           (0 = never remind, alert only once)
+# A "recovered" message is always sent when a problem clears.
+# To disable an alert, set enabled = false or delete its section.
+
+[global]
+check_interval = 60          # seconds between check cycles (minimum 5)
+server_name = "my-server"    # shown in every message; defaults to the hostname if omitted
+# state_file = "state.json"  # remembers active alerts across restarts
+
+# CPU usage in percent, measured over a 1 second sample each cycle.
+[alerts.cpu]
+enabled = true
+threshold = 90
+duration = 300
+repeat_every = 3600
+
+# 5-minute load average divided by the number of cores (1.0 = fully busy).
+[alerts.load]
+enabled = false
+threshold = 1.5
+duration = 300
+repeat_every = 3600
+
+# Memory in use in percent, not counting reclaimable cache.
+[alerts.memory]
+enabled = true
+threshold = 90
+duration = 300
+repeat_every = 3600
+
+# Swap in use in percent. Skipped automatically if the server has no swap.
+[alerts.swap]
+enabled = true
+threshold = 80
+duration = 300
+repeat_every = 3600
+
+# Disk usage in percent, one check per mount point.
+[alerts.disk]
+enabled = true
+threshold = 85
+mounts = ["/"]
+duration = 0
+repeat_every = 21600         # every 6 hours
+
+# systemd services that must be "active". Names as in `systemctl status <name>`.
+[alerts.service]
+enabled = true
+names = ["ssh"]
+duration = 60
+repeat_every = 1800
+
+# Reachability checks.
+#   tcp://host:port    succeeds if a TCP connection opens
+#   http(s)://...      succeeds on an HTTP status below 400
+[alerts.endpoint]
+enabled = false
+targets = ["tcp://127.0.0.1:5432", "https://example.com/health"]
+timeout = 5
+duration = 120
+repeat_every = 1800

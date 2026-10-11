@@ -1,0 +1,16 @@
+[Unit]
+Description=Server monitor (Telegram alerts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=servermon
+WorkingDirectory=/opt/server-monitor
+ExecStart=/usr/bin/python3 /opt/server-monitor/monitor.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
