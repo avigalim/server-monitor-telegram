@@ -365,6 +365,45 @@ Then:
 
 The central monitor always verifies the certificate. A certificate from a public CA, for example Let's Encrypt on a host name, needs no `ca_file`. **A self-signed certificate expires after the number of days you chose**: renew it before then, or the server shows up as `agent unreachable: ... certificate verify failed`.
 
+#### Using a certificate the server already has (Let's Encrypt, CyberPanel)
+
+If the server already has a trusted certificate for a host name that points at it, for example from CyberPanel or certbot, the agent can use that one. Central then needs no `ca_file`, and renewals are automatic. Two things need care:
+
+- The private key is readable only by root, and the agent runs as `servermon`.
+- The agent reads its certificate when it starts, so after each renewal it must be restarted.
+
+One small root script handles both. It copies the certificate for the agent and restarts the agent only when the certificate has changed. It works with any renewal tool, because it only compares files. Replace `HOSTNAME` with the certificate's host name, and check the source folder first (`sudo ls -l /etc/letsencrypt/live/HOSTNAME/` should show `fullchain.pem` and `privkey.pem`):
+
+```bash
+sudo tee /usr/local/sbin/sync-agent-cert.sh > /dev/null <<'EOF'
+#!/bin/sh
+# Copies the certificate for the monitor agent and restarts it when it changed.
+src=/etc/letsencrypt/live/HOSTNAME
+dst=/opt/server-monitor
+changed=0
+for f in fullchain.pem privkey.pem; do
+  if ! cmp -s "$src/$f" "$dst/agent-$f"; then
+    install -o servermon -g servermon -m 600 "$src/$f" "$dst/agent-$f" || exit 1
+    changed=1
+  fi
+done
+[ "$changed" = 1 ] && systemctl restart server-monitor-agent
+exit 0
+EOF
+sudo chmod 700 /usr/local/sbin/sync-agent-cert.sh
+sudo /usr/local/sbin/sync-agent-cert.sh        # first copy
+echo '17 4 * * * root /usr/local/sbin/sync-agent-cert.sh' | sudo tee /etc/cron.d/sync-agent-cert
+```
+
+Then set these in `agent.toml`, under `[agent]`:
+
+```toml
+tls_cert = "agent-fullchain.pem"
+tls_key = "agent-privkey.pem"
+```
+
+Edit `central.toml` first, so the server's `url` is `https://HOSTNAME:8765` (the host name must match the certificate, and it must point straight at the server, not through a proxy such as Cloudflare). Then restart the agent (`sudo systemctl restart server-monitor-agent`) and straight after it the central monitor (`sudo systemctl restart server-monitor-central`). Central waits `agent_duration` (2 minutes by default) before alerting, so a quick restart of both does not raise one.
+
 ### B5. Add more servers
 
 For each additional server:
