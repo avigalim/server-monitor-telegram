@@ -1,0 +1,16 @@
+[Unit]
+Description=Server monitor central (polls agents, sends Telegram alerts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=servermon
+WorkingDirectory=/opt/server-monitor
+ExecStart=/usr/bin/python3 /opt/server-monitor/monitor.py --settings /opt/server-monitor/central.toml
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

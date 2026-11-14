@@ -1,0 +1,40 @@
+# Settings for the central monitor (mode = "central"), run on a separate
+# machine. Copy to central.toml. It polls every agent listed below, sends all
+# alerts to Telegram, and answers /status for all servers with one bot.
+#
+# Needs TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_IDS and the agent tokens in .env.
+
+[global]
+mode = "central"
+check_interval = 60          # seconds between polls of all agents
+server_name = "central"      # shown in the test message and /help
+# state_file = "state.json"  # remembers active alerts across restarts
+
+[central]
+timeout = 10                 # seconds to wait for each agent
+agent_duration = 120         # seconds an agent must be unreachable before the alert
+agent_repeat_every = 1800    # seconds between reminders while it stays unreachable
+
+# One block per server. The name appears in every message and after /status.
+# The agent's token is read from .env under the variable named in token_env
+# (default AGENT_TOKEN, so one shared token needs no token_env at all).
+[[servers]]
+name = "web-01"
+url = "http://203.0.113.10:8765"
+
+[[servers]]
+name = "db-01"
+url = "https://203.0.113.11:8765"
+token_env = "AGENT_TOKEN_DB_01"
+ca_file = "db-01-cert.pem"   # only for a self-signed certificate: the agent's own cert file
+
+# A heartbeat that also covers every server. If it stops arriving, the central
+# monitor itself is down.
+[summary]
+enabled = true
+times = ["08:00"]
+
+# /status for all servers, /status web-01 for one. Only one program may poll a
+# bot, so this is the only place that should enable commands for this bot.
+[commands]
+enabled = true

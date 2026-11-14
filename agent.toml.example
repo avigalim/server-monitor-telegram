@@ -1,0 +1,49 @@
+# Settings for a server that is watched by a central monitor (mode = "agent").
+# Copy to agent.toml. The agent sends nothing to Telegram. It runs the checks
+# below and serves the readings over HTTP to the central monitor, which
+# raises the alerts. The alert options (threshold, duration, repeat_every,
+# mounts, names, ...) are the same as in settings.toml, and the central monitor
+# follows the duration and repeat_every set here.
+#
+# Needs AGENT_TOKEN in .env (see .env.example).
+
+[global]
+mode = "agent"
+check_interval = 60          # seconds between check cycles
+server_name = "web-01"       # only used in the agent's own log
+
+[agent]
+listen = "0.0.0.0"           # IPv4 address to listen on
+port = 8765
+# Optional HTTPS. Without it the token travels in clear text, so use it unless
+# the connection already runs through a VPN. Both files, or neither.
+# tls_cert = "agent-cert.pem"
+# tls_key = "agent-key.pem"
+
+[alerts.cpu]
+threshold = 90
+duration = 300
+repeat_every = 3600
+
+[alerts.memory]
+threshold = 90
+duration = 300
+repeat_every = 3600
+
+[alerts.disk]
+threshold = 85
+mounts = ["/"]
+duration = 0
+repeat_every = 21600
+
+[alerts.service]
+names = ["ssh"]
+duration = 60
+repeat_every = 1800
+
+[alerts.reboot]
+window = 600
+
+# Any other alert from settings.toml (load, swap, endpoint, inode, ping,
+# temperature, ssl) can be added the same way. Endpoint, ping and ssl checks
+# run from this server, so they test its view of the network.

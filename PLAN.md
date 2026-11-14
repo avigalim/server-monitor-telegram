@@ -8,6 +8,13 @@ Status: phase 1 and phase 2 built and tested.
 - Found and fixed during phase 2 testing: `ping` failed under the unit's NoNewPrivileges (the unit now grants CAP_NET_RAW, and a permission failure is reported as a skipped check, not "no reply").
 - Known limitation: bot commands need one poller per bot token, so enable `[commands]` on one server only, or use one bot per server.
 
+Phase 3 (built, tested locally and verified on real servers): agent and central modes in the same `monitor.py`.
+- Agent: runs the checks, serves JSON at `/status` over HTTP or HTTPS with a bearer token, never contacts Telegram.
+- Central: on a separate VPS, polls all agents, runs the existing alert logic per server, sends through one bot, answers `/status` and `/status <name>`. An unreachable or stuck agent is itself an alert.
+- Decisions: agent over SSH (no extra key management); alert policy (duration, repeat_every) set in each agent's own file; central only holds the server list and tokens.
+- 102 unit tests pass. Verified end to end on Windows with a real agent and central process, including HTTPS with a self-signed certificate.
+- Verified on real Ubuntu servers (central on 24.04, one agent on 22.04 with Python 3.12 from deadsnakes) with a real bot: `/status`, the unreachable alert and the recovery message. Run over plain HTTP so far; HTTPS on a real agent is still to do.
+
 ## Goal
 
 A simple Linux server monitoring tool that sends alerts to a Telegram bot. Configured with an `.env` file (bot token, recipient user IDs) and a settings file (which alerts are enabled, thresholds, how often to repeat).
