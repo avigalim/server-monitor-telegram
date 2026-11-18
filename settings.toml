@@ -13,6 +13,7 @@
 check_interval = 60          # seconds between check cycles (minimum 5)
 server_name = "my-server"    # shown in every message; defaults to the hostname if omitted
 # state_file = "state.json"  # remembers active alerts across restarts
+# extra_checks = "checks.d"  # folder of your own check files, see README.md "Extra checks"
 
 # CPU usage in percent, measured over a 1 second sample each cycle.
 [alerts.cpu]

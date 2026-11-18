@@ -11,6 +11,7 @@
 mode = "agent"
 check_interval = 60          # seconds between check cycles
 server_name = "web-01"       # only used in the agent's own log
+# extra_checks = "checks.d"  # folder of your own check files, see README.md "Extra checks"
 
 [agent]
 listen = "0.0.0.0"           # IPv4 address to listen on

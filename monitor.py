@@ -11,6 +11,7 @@ Standard library only, Python 3.11+. See README.md for setup.
 
 import argparse
 import hmac
+import importlib.util
 import json
 import logging
 import os
@@ -33,6 +34,7 @@ from datetime import datetime, timedelta
 from datetime import time as dtime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 BASE_DIR = Path(__file__).resolve().parent
 PROC = Path("/proc")
@@ -97,6 +99,7 @@ ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")  # no leading "-", so never read as an option
 SSL_TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]*(:\d{1,5})?$")
 TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+EXTRA_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def load_env(path):
@@ -117,6 +120,73 @@ def load_env(path):
     return env
 
 
+def _world_writable(path):
+    return os.name == "posix" and bool(os.stat(path).st_mode & 0o002)
+
+
+def _wrap_extra_check(name, check, api):
+    """Call an extra check and make sure what it returns cannot upset the alert logic."""
+
+    def run(cfg):
+        readings = check(cfg, api)
+        if not isinstance(readings, list) or not all(isinstance(r, Reading) for r in readings):
+            raise CheckError(f"extra check '{name}' must return a list of Reading")
+        for r in readings:
+            # The alert name is the part of the key before the first ':'. Pruning and the
+            # central monitor's policy lookup depend on it, so a check may only use its own.
+            if not isinstance(r.key, str) or not (r.key == name or r.key.startswith(name + ":")):
+                raise CheckError(f"extra check '{name}' returned a reading with key {r.key!r}; "
+                                 f"keys must be '{name}' or start with '{name}:'")
+        return readings
+
+    return run
+
+
+def load_extra_checks(folder):
+    """Load every *.py file in `folder` as one extra check.
+
+    A file defines NAME, optionally DEFAULTS (a dict) and check(cfg, api). Returns
+    {name: (defaults, check function)}. Anything wrong stops start-up with a message
+    that names the file, so a typo is never silently ignored.
+    """
+    if not folder.is_dir():
+        raise ConfigError(f"global.extra_checks: folder not found: {folder}")
+    if _world_writable(folder):
+        raise ConfigError(f"global.extra_checks: {folder} is writable by everyone, refusing to run code from it")
+    api = SimpleNamespace(Reading=Reading, CheckError=CheckError, format_duration=format_duration)
+    found = {}
+    for path in sorted(folder.glob("*.py")):
+        if path.name.startswith(("_", ".")):
+            continue
+        where = f"Extra check {path.name}"
+        if _world_writable(path):
+            raise ConfigError(f"{where} is writable by everyone, refusing to run it")
+        module_name = f"monitor_extra_{path.stem}"
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+        except (Exception, SystemExit) as e:  # SystemExit: a file that calls sys.exit() when imported
+            sys.modules.pop(module_name, None)
+            raise ConfigError(f"Cannot load extra check {path.name}: {type(e).__name__}: {e}")
+        name = getattr(module, "NAME", None)
+        if not isinstance(name, str) or not EXTRA_NAME_RE.match(name):
+            raise ConfigError(f"{where}: NAME must be lowercase letters, digits and '_', starting with a letter")
+        if name in DEFAULTS:
+            raise ConfigError(f"{where}: NAME '{name}' is already a built-in check")
+        if name in found:
+            raise ConfigError(f"{where}: NAME '{name}' is already used by another file in the folder")
+        defaults = getattr(module, "DEFAULTS", {})
+        if not isinstance(defaults, dict):
+            raise ConfigError(f"{where}: DEFAULTS must be a dict")
+        check = getattr(module, "check", None)
+        if not callable(check):
+            raise ConfigError(f"{where}: it must define check(cfg, api)")
+        found[name] = ({"duration": 0, "repeat_every": 3600, **defaults}, _wrap_extra_check(name, check, api))
+    return found
+
+
 def load_settings(path):
     try:
         with open(path, "rb") as f:
@@ -135,11 +205,18 @@ def load_settings(path):
     base = Path(path).resolve().parent
     g["state_file"] = base / g["state_file"]
 
+    extra = {}
+    if g.get("extra_checks"):
+        if not isinstance(g["extra_checks"], str):
+            raise ConfigError("global.extra_checks must be a folder name")
+        extra = load_extra_checks(base / g["extra_checks"])
+    known = {**DEFAULTS, **{name: defaults for name, (defaults, _) in extra.items()}}
+
     alerts = {}
     for name, cfg in raw.get("alerts", {}).items():
-        if name not in DEFAULTS:
-            raise ConfigError(f"Unknown alert '{name}'. Known alerts: {', '.join(DEFAULTS)}")
-        merged = {"enabled": True, **DEFAULTS[name], **cfg}
+        if name not in known:
+            raise ConfigError(f"Unknown alert '{name}'. Known alerts: {', '.join(known)}")
+        merged = {"enabled": True, **known[name], **cfg}
         alerts[name] = merged
 
     for target in alerts.get("endpoint", {}).get("targets", []):
@@ -185,7 +262,8 @@ def load_settings(path):
     servers = _load_servers(raw.get("servers", []), base) if g["mode"] == "central" else []
 
     return {"global": g, "alerts": alerts, "summary": summary, "commands": commands,
-            "agent": agent, "central": central, "servers": servers}
+            "agent": agent, "central": central, "servers": servers,
+            "extra_checks": {name: check for name, (_, check) in extra.items()}}
 
 
 def _load_servers(raw_servers, base):
@@ -611,8 +689,9 @@ def collect_readings(settings):
         if not cfg["enabled"]:
             continue
         enabled.add(name)
+        check = settings.get("extra_checks", {}).get(name) or COLLECTORS[name]
         try:
-            readings = COLLECTORS[name](cfg)
+            readings = check(cfg)
         except CheckError as e:
             log.error("Check '%s' skipped this cycle: %s", name, e)
             failed.append(name)

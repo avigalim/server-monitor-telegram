@@ -15,6 +15,19 @@ Phase 3 (built, tested locally and verified on real servers): agent and central 
 - 102 unit tests pass. Verified end to end on Windows with a real agent and central process, including HTTPS with a self-signed certificate.
 - Verified on real Ubuntu servers (central on 24.04, one agent on 22.04 with Python 3.12 from deadsnakes) with a real bot: `/status`, the unreachable alert and the recovery message. Run over plain HTTP so far; HTTPS on a real agent is still to do.
 
+## Phase 4 (built and tested locally, not yet released): extra checks from a folder
+
+Goal: let anyone add their own checks without changing `monitor.py`, so site specific checks stay out of the main script (and out of this repo if they are private).
+
+Status: 128 unit tests pass (also on Linux in a container, where the file mode test runs). Checked end to end on Linux with the example check: alert text, agent payload with policy, a refused world writable folder, and a broken file named in the error. Not yet run on a real server.
+
+- **Opt in.** `[global] extra_checks = "checks.d"` in `settings.toml` or `agent.toml` (a folder, relative to the settings file). Nothing is loaded unless it is set. Every `*.py` file in it is one extra check.
+- **A check file** defines `NAME` (lowercase letters, digits and `_`, must not clash with a built-in check), `DEFAULTS` (its options; `duration` and `repeat_every` as for any alert), and `check(cfg, api)`, which returns a list of `Reading`. `api` gives it `Reading`, `CheckError` and `format_duration`, so a check file never imports `monitor.py`. It is configured in a normal `[alerts.<NAME>]` section, with `enabled`, `duration` and `repeat_every` like any other alert.
+- **Everything else is unchanged:** alert, reminder and recovery logic, `event` readings for one-off notices, the summary and `/status`. In agent mode the readings travel to the central monitor as usual; the central monitor needs the same `monitor.py` but no check files.
+- **Safety.** A check file is ordinary Python run as the monitor's user, so the folder must be writable only by people who may already run code there. A file that fails to import, or defines a bad name, stops start-up with a clear message naming the file. A check that raises at run time is skipped for that cycle, as for built-in checks.
+- **Docs.** A README section with a small generic example (warn when a backup file is older than a set age).
+- **Tests.** Loading a good file, a clashing name, a broken file, defaults merged into settings, an unknown `[alerts.x]` section still rejected, and a check file's readings reaching the alert engine and the agent payload.
+
 ## Goal
 
 A simple Linux server monitoring tool that sends alerts to a Telegram bot. Configured with an `.env` file (bot token, recipient user IDs) and a settings file (which alerts are enabled, thresholds, how often to repeat).

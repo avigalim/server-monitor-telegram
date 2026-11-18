@@ -24,6 +24,7 @@ Which one to choose:
 - [Setup B: many servers (central and agents)](#setup-b-many-servers-central-and-agents)
 - [Summary and heartbeat](#summary-and-heartbeat)
 - [Bot commands](#bot-commands)
+- [Extra checks](#extra-checks)
 - [Settings reference](#settings-reference)
 - [Ping permissions](#ping-permissions)
 - [Command line](#command-line)
@@ -465,6 +466,40 @@ Send `/status` to the bot and it replies with the same overview, from the latest
 
 **One poller per bot.** Telegram allows only one program to poll a bot for messages. In `local` mode, if several servers share one bot token, enable `[commands]` on just one of them, or give each server its own bot. A second poller makes both fail with `409 Conflict`, which is logged. Alerts and summaries are unaffected, because sending has no such limit. Central mode avoids this limit: only the central monitor talks to Telegram. **If you reuse a bot for central, make sure no `local` monitor still has `[commands] enabled = true` on the same bot.**
 
+## Extra checks
+
+For a check that only your setup needs (a backup that must be fresh, a queue that must be short), you can add your own check without changing `monitor.py`. Put one Python file per check in a folder and point `extra_checks` at it:
+
+```toml
+[global]
+extra_checks = "checks.d"     # relative to this settings file, or an absolute path
+
+[alerts.backup_age]           # the section is named after the file's NAME
+file = "/var/backups/db.sql.gz"
+max_hours = 26
+duration = 0                  # duration, repeat_every and enabled work as for any alert
+repeat_every = 21600
+```
+
+A check file defines three things (see [examples/checks.d/backup_age.py](examples/checks.d/backup_age.py), a complete working example):
+
+```python
+NAME = "backup_age"                         # lowercase letters, digits and _, not a built-in name
+DEFAULTS = {"max_hours": 26, "duration": 0, "repeat_every": 21600}   # options and their defaults
+
+def check(cfg, api):                        # cfg: the merged [alerts.backup_age] section
+    # Return a list of api.Reading(key, label, bad, detail).
+    return [api.Reading("backup_age", "Backup", False, "all good")]
+```
+
+- `api` gives the check `Reading`, `CheckError` (raise it for "this check cannot run here": it is logged as one line and skipped) and `format_duration`. A check file never needs to import `monitor.py`.
+- Reading keys must be `NAME` or start with `NAME:` (for example `backup_age:db`, `backup_age:files`), so each check keeps to its own alerts. Anything else makes the check fail with a clear log message.
+- Pass `event=True` to a `Reading` for a one-off notice: sent once, no reminders, no "recovered" message.
+- Everything else works as for the built-in checks: duration, reminders, recovery, the summary and `/status`. In agent mode the readings reach the central monitor like any other. The central monitor needs the same `monitor.py` but not the check files.
+- Files whose name starts with `_` or `.` are ignored, so you can keep notes or helpers next to them.
+
+**Safety.** A check file is ordinary Python and runs as the user that runs the monitor. Nothing is loaded unless `extra_checks` is set. On Linux the monitor refuses to start if the folder or a file in it is writable by everyone, and it stops with a message that names the file if one fails to load, so a typo is never silently ignored. A check that raises an error while running is skipped for that cycle and logged; the other checks carry on.
+
 ## Settings reference
 
 The three modes use the same settings file format. Alerts, `[summary]` and `[commands]` are described above and in [settings.toml](settings.toml). These are the options added for agent and central mode, see [agent.toml.example](agent.toml.example) and [central.toml.example](central.toml.example):
@@ -474,6 +509,7 @@ The three modes use the same settings file format. Alerts, `[summary]` and `[com
 | `[global] mode`              | `"local"`    | `local`, `agent` or `central`                                              |
 | `[global] check_interval`    | `60`         | Seconds between check cycles (agent, local) or polls of all agents (central) |
 | `[global] server_name`       | hostname     | Name in messages (local). In agent mode only in the log. In central mode in the test message. |
+| `[global] extra_checks`      | none         | Folder of your own check files, relative to the settings file. See [Extra checks](#extra-checks). |
 | `[agent] listen`             | `"0.0.0.0"`  | IPv4 address to listen on                                                  |
 | `[agent] port`               | `8765`       | TCP port                                                                   |
 | `[agent] tls_cert`, `tls_key`| none         | Files for HTTPS. Set both or neither. Relative paths are relative to the settings file. |
